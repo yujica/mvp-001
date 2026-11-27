@@ -40,6 +40,19 @@ final class ExtractionTests: XCTestCase {
         for fact in facts { XCTAssertTrue(prompt.contains(fact)) }
     }
 
+    func testPromptFillsRemainingBudgetInSourceOrderWithoutDuplicatingExcerpts() {
+        let prefix = String(repeating: "あ", count: 300) + "早めの紹介情報\n"
+        let middle = "販売価格：2,400万円\n次の紹介情報\n"
+        let detail = "専有面積：34.8㎡"
+        let text = prefix + middle + String(repeating: "周辺のご案内。", count: 350) + "\n" + detail
+        let prompt = OnDeviceExtractor.promptText(from: text)
+
+        XCTAssertEqual(prompt.utf16.count, 1700)
+        XCTAssertTrue(prompt.hasPrefix(prefix + middle))
+        XCTAssertTrue(prompt.hasSuffix(detail))
+        XCTAssertEqual(prompt.components(separatedBy: "販売価格").count, 2)
+    }
+
     func testDecodeShiftJISFromMetaDeclarations() throws {
         for meta in [
             "<META CHARSET=Shift_JIS>",

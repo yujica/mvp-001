@@ -141,11 +141,32 @@ struct OnDeviceExtractor: ListingExtractor {
         for index in 0..<2 {
             for excerpts in matches where excerpts.indices.contains(index) {
                 let merged = mergeExcerpts(ranges + [excerpts[index]])
-                let length = merged.reduce(merged.count - 1) { $0 + $1.length }
+                let length = excerptLength(merged)
                 if length <= limit { ranges = merged }
             }
         }
-        return ranges.map { source.substring(with: $0) }.joined(separator: "\n")
+
+        var remaining = limit - excerptLength(ranges)
+        for index in ranges.indices where remaining > 0 {
+            let end = NSMaxRange(ranges[index])
+            let hasNext = index + 1 < ranges.count
+            let nextStart = hasNext ? ranges[index + 1].location : source.length
+            let gap = nextStart - end
+            let separatorCost = hasNext ? 1 : 0
+            if gap <= remaining + separatorCost {
+                ranges[index].length += gap
+                remaining -= gap - separatorCost
+            } else {
+                let cutoff = source.rangeOfComposedCharacterSequence(at: end + remaining).location
+                ranges[index].length += cutoff - end
+                break
+            }
+        }
+        return mergeExcerpts(ranges).map { source.substring(with: $0) }.joined(separator: "\n")
+    }
+
+    private static func excerptLength(_ ranges: [NSRange]) -> Int {
+        ranges.reduce(ranges.count - 1) { $0 + $1.length }
     }
 
     private static func mergeExcerpts(_ ranges: [NSRange]) -> [NSRange] {

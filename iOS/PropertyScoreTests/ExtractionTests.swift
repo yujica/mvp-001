@@ -162,6 +162,30 @@ final class ExtractionTests: XCTestCase {
         XCTAssertEqual(ListingExtractionFailure(error).reason, error.localizedDescription)
     }
 
+    func testBridgedModelErrorsShowExecutionGuidanceInsteadOfRawDescription() {
+        let errors = [
+            NSError(domain: "FoundationModels.LanguageModelSession.GenerationError", code: -1),
+            NSError(domain: "com.apple.FoundationModels", code: 123),
+            NSError(domain: "LanguageModelSession.GenerationError", code: 123)
+        ]
+        let expected = "端末内AI（Apple Intelligence）がこの環境でモデルを実行できませんでした。Apple Intelligenceを有効にした対応端末で再試行するか、下の項目を手入力してください。"
+        for error in errors {
+            XCTAssertEqual(ListingExtractionFailure(error).reason, expected)
+        }
+
+        let intermediate = NSError(domain: "ExtractionTests", code: 1, userInfo: [NSUnderlyingErrorKey: errors[0]])
+        let other = NSError(domain: "ExtractionTests", code: 2)
+        let wrapped = NSError(domain: "ExtractionTests", code: 3, userInfo: [NSMultipleUnderlyingErrorsKey: [other, intermediate]])
+        XCTAssertEqual(ListingExtractionFailure(wrapped).reason, expected)
+    }
+
+    func testWrappedTypedModelErrorKeepsSpecificGuidance() {
+        let error = LanguageModelSession.GenerationError.exceededContextWindowSize(.init(debugDescription: "fixture"))
+        let wrapped = NSError(domain: "ExtractionTests", code: 1, userInfo: [NSUnderlyingErrorKey: error])
+
+        XCTAssertTrue(ListingExtractionFailure(wrapped).reason.contains("掲載文が長すぎます"))
+    }
+
     func testModelAvailabilityShowsSpecificReasonsAndNextSteps() throws {
         let cases: [(SystemLanguageModel.Availability, String, String)] = [
             (.unavailable(.deviceNotEligible), "対応していません", "対応端末をお使いください"),

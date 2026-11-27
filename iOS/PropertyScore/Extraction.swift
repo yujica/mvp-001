@@ -1,6 +1,7 @@
 import CoreFoundation
 import Foundation
 import FoundationModels
+import OSLog
 
 protocol ListingExtractor {
     var unavailableReason: String? { get }
@@ -8,35 +9,64 @@ protocol ListingExtractor {
 }
 
 struct ListingExtractionFailure: LocalizedError {
+    private static let logger = Logger(subsystem: "com.yujica.propertyscore", category: "Extraction")
+    private static let modelExecutionFailure = "端末内AI（Apple Intelligence）がこの環境でモデルを実行できませんでした。Apple Intelligenceを有効にした対応端末で再試行するか、下の項目を手入力してください。"
+
     let reason: String
     let partialListing: Listing
 
     init(_ error: any Error, partialListing: Listing = Listing()) {
+        Self.logger.error("Listing extraction failed: \(String(reflecting: error), privacy: .private)")
         self.partialListing = partialListing
-        guard let generationError = error as? LanguageModelSession.GenerationError else {
-            reason = error.localizedDescription
-            return
+        var visited = Set<ObjectIdentifier>()
+        reason = Self.modelFailureReason(for: error, visited: &visited) ?? error.localizedDescription
+    }
+
+    private static func modelFailureReason(for error: any Error, visited: inout Set<ObjectIdentifier>) -> String? {
+        let nsError = error as NSError
+        let identity = ObjectIdentifier(nsError)
+        guard visited.insert(identity).inserted else { return nil }
+        defer { visited.remove(identity) }
+
+        var underlying = nsError.userInfo[NSMultipleUnderlyingErrorsKey] as? [any Error] ?? []
+        if let cause = nsError.userInfo[NSUnderlyingErrorKey] as? any Error {
+            underlying.insert(cause, at: 0)
         }
+        if let toolError = error as? LanguageModelSession.ToolCallError {
+            underlying.append(toolError.underlyingError)
+        }
+        for cause in underlying {
+            if let reason = modelFailureReason(for: cause, visited: &visited) { return reason }
+        }
+
+        if let generationError = error as? LanguageModelSession.GenerationError {
+            return generationFailureReason(for: generationError)
+        }
+        let domain = nsError.domain.lowercased()
+        return domain.contains("generationerror") || domain.contains("foundationmodels") ? modelExecutionFailure : nil
+    }
+
+    private static func generationFailureReason(for generationError: LanguageModelSession.GenerationError) -> String {
         switch generationError {
         case .exceededContextWindowSize:
-            reason = "掲載文が長すぎます。物件情報の部分だけを貼り付けて、もう一度お試しください。"
+            "掲載文が長すぎます。物件情報の部分だけを貼り付けて、もう一度お試しください。"
         case .assetsUnavailable:
-            reason = "Apple Intelligence のモデルを読み込めませんでした。「設定」＞「Apple IntelligenceとSiri」を開き、モデルが未ダウンロードの場合は完了を待ってからお試しください。"
+            "Apple Intelligence のモデルを読み込めませんでした。「設定」＞「Apple IntelligenceとSiri」を開き、モデルが未ダウンロードの場合は完了を待ってからお試しください。"
         case .guardrailViolation:
-            reason = "Apple Intelligence の安全性チェックにより読み取りが停止しました。物件情報を手入力してください。"
+            "Apple Intelligence の安全性チェックにより読み取りが停止しました。物件情報を手入力してください。"
         case .unsupportedGuide:
-            reason = "このモデルは物件データの読み取り形式に対応していません。物件情報を手入力してください。"
+            "このモデルは物件データの読み取り形式に対応していません。物件情報を手入力してください。"
         case .unsupportedLanguageOrLocale:
-            reason = "掲載文の言語または端末の言語設定にモデルが対応していません。日本語の掲載文を使い、Apple Intelligence の言語設定を確認してください。"
+            "掲載文の言語または端末の言語設定にモデルが対応していません。日本語の掲載文を使い、Apple Intelligence の言語設定を確認してください。"
         case .decodingFailure:
-            reason = "モデルの応答から物件データを読み取れませんでした。物件情報を手入力してください。"
+            "モデルの応答から物件データを読み取れませんでした。物件情報を手入力してください。"
         case .rateLimited:
-            reason = "Apple Intelligence の利用回数が一時的に制限されています。しばらく待ってからお試しください。"
+            "Apple Intelligence の利用回数が一時的に制限されています。しばらく待ってからお試しください。"
         case .concurrentRequests:
-            reason = "Apple Intelligence は別の読み取りを処理中です。その処理が終わってからお試しください。"
+            "Apple Intelligence は別の読み取りを処理中です。その処理が終わってからお試しください。"
         case .refusal:
-            reason = "Apple Intelligence がこの掲載文の読み取りを拒否しました。物件情報を手入力してください。"
-        @unknown default: reason = error.localizedDescription
+            "Apple Intelligence がこの掲載文の読み取りを拒否しました。物件情報を手入力してください。"
+        @unknown default: modelExecutionFailure
         }
     }
 

@@ -221,6 +221,10 @@ enum ListingPage {
     }
 
     static func decode(_ data: Data, httpCharset: String?, isHTML: Bool) -> String {
+        let utf8BOM: [UInt8] = [0xEF, 0xBB, 0xBF]
+        if data.starts(with: utf8BOM) {
+            return String(decoding: data.dropFirst(utf8BOM.count), as: UTF8.self)
+        }
         if let charset = httpCharset, let encoding = encoding(named: charset),
            let text = String(data: data, encoding: encoding) {
             return text

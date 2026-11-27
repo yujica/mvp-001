@@ -73,6 +73,14 @@ final class ExtractionTests: XCTestCase {
         XCTAssertEqual(ListingPage.decode(bytes, httpCharset: "UTF-8", isHTML: true), html)
     }
 
+    func testDecodeUTF8BOMOverridesHTTPAndMetaCharsets() {
+        let html = "<meta charset=Shift_JIS><p>青葉レジデンス</p>"
+        let bytes = Data([0xEF, 0xBB, 0xBF]) + Data(html.utf8)
+
+        XCTAssertEqual(ListingPage.decode(bytes, httpCharset: "ISO-8859-1", isHTML: true), html)
+        XCTAssertEqual(ListingPage.decode(bytes, httpCharset: nil, isHTML: true), html)
+    }
+
     func testDecodeEUCJPFromMetaAndShiftJISWithoutDeclaration() throws {
         let html = "<meta charset=EUC-JP><p>青葉レジデンス</p>"
         let eucJP = try XCTUnwrap(html.data(using: .japaneseEUC))

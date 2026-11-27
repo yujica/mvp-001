@@ -55,7 +55,8 @@ final class PropertyScoreUITests: XCTestCase {
 
         let warning = app.descendants(matching: .any)["extraction-warning"].firstMatch
         XCTAssertTrue(warning.waitForExistence(timeout: 5))
-        XCTAssertTrue(warning.label.contains("Apple Intelligence のモデルを読み込めませんでした。"))
+        let warningLabel = warning.label
+        XCTAssertTrue(warningLabel.contains("Apple Intelligence のモデルを読み込めませんでした。"), "Unexpected warning label: \(warningLabel.debugDescription)")
         XCTAssertEqual(app.textFields["field-name"].value as? String, "青葉レジデンス")
         XCTAssertEqual(app.textFields["field-walking"].value as? String, "5")
         app.buttons["calculate-score"].tap()

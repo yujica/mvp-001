@@ -29,6 +29,8 @@ struct ListingEditor: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Label(warning, systemImage: "exclamationmark.circle")
                             .foregroundStyle(.orange)
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel(Text(warning))
                             .accessibilityIdentifier("extraction-warning")
                         Text("読み取れた項目を確認し、残りは手入力してください。")
                             .font(.footnote)

@@ -50,13 +50,72 @@ struct OnDeviceExtractor: ListingExtractor {
             不明な値は推測せず nil。金額は万円に変換してください。
             """)
         let fields = try await session.respond(
-            to: "掲載文：\n\(text.prefix(1700))", generating: ExtractedListing.self
+            to: "掲載文：\n\(Self.promptText(from: text))", generating: ExtractedListing.self
         ).content
         return Listing(
             name: fields.name, price: fields.price, monthlyRent: fields.monthlyRent, monthlyCosts: fields.monthlyCosts,
             walkingMinutes: fields.walkingMinutes, area: fields.area, age: fields.age,
             renovationCost: fields.renovationCost, assessedValue: fields.assessedValue, leasehold: fields.leasehold
         )
+    }
+
+    static func promptText(from text: String) -> String {
+        let limit = 1700
+        let source = text as NSString
+        guard source.length > limit else { return text }
+
+        let fields = [
+            "物件名|物件名称|マンション名",
+            "販売価格|売買価格|物件価格|価格",
+            "賃料|家賃|賃貸収入|利回り",
+            "運営費|管理費|共益費|固定資産税",
+            "最寄駅|最寄り駅|徒歩|駅",
+            "専有面積|床面積|面積",
+            "築年数|築年月|築年|建物構造|構造|建物",
+            "修繕費|修繕見込|修繕|改修",
+            "積算評価|積算|評価額",
+            "土地権利|借地権|所有権|土地"
+        ]
+        let matches = fields.map { pattern -> [NSRange] in
+            guard let expression = try? NSRegularExpression(pattern: pattern) else { return [] }
+            var excerpts: [NSRange] = []
+            expression.enumerateMatches(in: text, range: NSRange(location: 0, length: source.length)) { match, _, stop in
+                guard let match, NSMaxRange(match.range) > 240 else { return }
+                let line = source.lineRange(for: match.range)
+                let start = max(line.location, match.range.location - 24)
+                let end = min(NSMaxRange(line), NSMaxRange(match.range) + 76)
+                let excerpt = source.rangeOfComposedCharacterSequences(for: NSRange(location: start, length: end - start))
+                if let previous = excerpts.last, NSIntersectionRange(previous, excerpt).length > 0 { return }
+                excerpts.append(excerpt)
+                if excerpts.count == 2 { stop.pointee = true }
+            }
+            return excerpts
+        }
+        guard matches.contains(where: { !$0.isEmpty }) else {
+            return source.substring(to: source.rangeOfComposedCharacterSequence(at: limit).location)
+        }
+
+        var ranges = [NSRange(location: 0, length: source.rangeOfComposedCharacterSequence(at: 240).location)]
+        for index in 0..<2 {
+            for excerpts in matches where excerpts.indices.contains(index) {
+                let merged = mergeExcerpts(ranges + [excerpts[index]])
+                let length = merged.reduce(merged.count - 1) { $0 + $1.length }
+                if length <= limit { ranges = merged }
+            }
+        }
+        return ranges.map { source.substring(with: $0) }.joined(separator: "\n")
+    }
+
+    private static func mergeExcerpts(_ ranges: [NSRange]) -> [NSRange] {
+        var merged: [NSRange] = []
+        for range in ranges.sorted(by: { $0.location < $1.location }) {
+            if let last = merged.last, NSMaxRange(last) >= range.location {
+                merged[merged.count - 1] = NSUnionRange(last, range)
+            } else {
+                merged.append(range)
+            }
+        }
+        return merged
     }
 }
 

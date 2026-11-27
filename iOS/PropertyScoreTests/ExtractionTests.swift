@@ -65,6 +65,17 @@ final class ExtractionTests: XCTestCase {
         XCTAssertEqual(prompt.components(separatedBy: "販売価格").count, 2)
     }
 
+    func testPromptKeepsKeywordPiecesFromOversizedMergedExcerpt() {
+        let filler = String(repeating: "あ", count: 2000)
+        let label = "販売価格\n"
+        let piece = label + String(repeating: "🏠", count: 21) + "円\n"
+        let text = filler + "\n" + String(repeating: piece, count: 40)
+        let prompt = OnDeviceExtractor.promptText(from: text)
+
+        XCTAssertEqual(prompt.utf16.count, 1700)
+        XCTAssertTrue(prompt.hasSuffix("\n" + String(repeating: piece, count: 29) + label + String(repeating: "🏠", count: 16)))
+    }
+
     func testDecodeShiftJISFromMetaDeclarations() throws {
         for meta in [
             "<META CHARSET=Shift_JIS>",

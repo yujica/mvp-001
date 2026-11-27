@@ -113,9 +113,9 @@ struct OnDeviceExtractor: ListingExtractor {
             "積算評価|積算|評価額",
             "土地権利|借地権|所有権|土地"
         ]
-        let matches = fields.map { pattern -> [NSRange] in
+        let matches = fields.map { pattern -> [(range: NSRange, pieces: [NSRange])] in
             guard let expression = try? NSRegularExpression(pattern: pattern) else { return [] }
-            var excerpts: [NSRange] = []
+            var excerpts: [(range: NSRange, pieces: [NSRange])] = []
             expression.enumerateMatches(in: text, range: NSRange(location: 0, length: source.length)) { match, _, stop in
                 guard let match, NSMaxRange(match.range) > 240 else { return }
                 let line = source.lineRange(for: match.range)
@@ -127,10 +127,11 @@ struct OnDeviceExtractor: ListingExtractor {
                 }
                 let end = min(lineEnd, maximumEnd)
                 let excerpt = source.rangeOfComposedCharacterSequences(for: NSRange(location: start, length: end - start))
-                if let previous = excerpts.last, NSMaxRange(previous) >= excerpt.location {
-                    excerpts[excerpts.count - 1] = NSUnionRange(previous, excerpt)
+                if let previous = excerpts.last?.range, NSMaxRange(previous) >= excerpt.location {
+                    excerpts[excerpts.count - 1].range = NSUnionRange(previous, excerpt)
+                    excerpts[excerpts.count - 1].pieces.append(excerpt)
                 } else if excerpts.count < 2 {
-                    excerpts.append(excerpt)
+                    excerpts.append((excerpt, [excerpt]))
                 } else {
                     stop.pointee = true
                 }
@@ -144,9 +145,21 @@ struct OnDeviceExtractor: ListingExtractor {
         var ranges = [NSRange(location: 0, length: source.rangeOfComposedCharacterSequence(at: 240).location)]
         for index in 0..<2 {
             for excerpts in matches where excerpts.indices.contains(index) {
-                let merged = mergeExcerpts(ranges + [excerpts[index]])
-                let length = excerptLength(merged)
-                if length <= limit { ranges = merged }
+                let excerpt = excerpts[index]
+                let merged = mergeExcerpts(ranges + [excerpt.range])
+                if excerptLength(merged) <= limit {
+                    ranges = merged
+                    continue
+                }
+                for piece in excerpt.pieces {
+                    let merged = mergeExcerpts(ranges + [piece])
+                    if excerptLength(merged) <= limit {
+                        ranges = merged
+                    } else {
+                        ranges = addingExcerptPrefix(piece, to: ranges, source: source, limit: limit)
+                        break
+                    }
+                }
             }
         }
 
@@ -167,6 +180,23 @@ struct OnDeviceExtractor: ListingExtractor {
             }
         }
         return mergeExcerpts(ranges).map { source.substring(with: $0) }.joined(separator: "\n")
+    }
+
+    private static func addingExcerptPrefix(_ excerpt: NSRange, to ranges: [NSRange], source: NSString, limit: Int) -> [NSRange] {
+        var fittingLength = 0
+        var overflowingLength = excerpt.length
+        while overflowingLength - fittingLength > 1 {
+            let length = (fittingLength + overflowingLength) / 2
+            let merged = mergeExcerpts(ranges + [NSRange(location: excerpt.location, length: length)])
+            if excerptLength(merged) <= limit {
+                fittingLength = length
+            } else {
+                overflowingLength = length
+            }
+        }
+        let cutoff = source.rangeOfComposedCharacterSequence(at: excerpt.location + fittingLength).location
+        guard cutoff > excerpt.location else { return ranges }
+        return mergeExcerpts(ranges + [NSRange(location: excerpt.location, length: cutoff - excerpt.location)])
     }
 
     private static func excerptLength(_ ranges: [NSRange]) -> Int {

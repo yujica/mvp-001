@@ -120,7 +120,12 @@ struct OnDeviceExtractor: ListingExtractor {
                 guard let match, NSMaxRange(match.range) > 240 else { return }
                 let line = source.lineRange(for: match.range)
                 let start = max(line.location, match.range.location - 24)
-                let end = min(NSMaxRange(line), NSMaxRange(match.range) + 76)
+                let maximumEnd = min(source.length, NSMaxRange(match.range) + 76)
+                var lineEnd = NSMaxRange(line)
+                for _ in 0..<2 where lineEnd < maximumEnd {
+                    lineEnd = NSMaxRange(source.lineRange(for: NSRange(location: lineEnd, length: 1)))
+                }
+                let end = min(lineEnd, maximumEnd)
                 let excerpt = source.rangeOfComposedCharacterSequences(for: NSRange(location: start, length: end - start))
                 if let previous = excerpts.last, NSIntersectionRange(previous, excerpt).length > 0 { return }
                 excerpts.append(excerpt)

@@ -31,6 +31,15 @@ final class ExtractionTests: XCTestCase {
         XCTAssertEqual(OnDeviceExtractor.promptText(from: text), text)
     }
 
+    func testPromptKeepsValuesOnLinesAfterLateKeywords() {
+        let facts = ["販売価格\n2,400万円", "専有面積\n\n34.8㎡"]
+        let text = String(repeating: "周辺のご案内。", count: 350) + "\n" + facts.joined(separator: "\n")
+        let prompt = OnDeviceExtractor.promptText(from: text)
+
+        XCTAssertLessThanOrEqual(prompt.utf16.count, 1700)
+        for fact in facts { XCTAssertTrue(prompt.contains(fact)) }
+    }
+
     func testDecodeShiftJISFromMetaDeclarations() throws {
         for meta in [
             "<META CHARSET=Shift_JIS>",

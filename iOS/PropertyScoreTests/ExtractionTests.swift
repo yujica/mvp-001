@@ -131,8 +131,48 @@ final class ExtractionTests: XCTestCase {
         let error = LanguageModelSession.GenerationError.assetsUnavailable(.init(debugDescription: "fixture"))
         let failure = ListingExtractionFailure(error, partialListing: partial)
 
-        XCTAssertEqual(failure.localizedDescription, "掲載情報を読み取れませんでした。理由：Apple Intelligence のモデルを読み込めませんでした。")
+        XCTAssertEqual(failure.localizedDescription, "掲載情報を読み取れませんでした。理由：Apple Intelligence のモデルを読み込めませんでした。「設定」＞「Apple IntelligenceとSiri」を開き、モデルが未ダウンロードの場合は完了を待ってからお試しください。")
         XCTAssertEqual(failure.partialListing, partial)
         XCTAssertNil(failure.partialListing.price)
+    }
+
+    func testGenerationErrorsShowSpecificReasonsAndNextSteps() {
+        typealias GenerationError = LanguageModelSession.GenerationError
+        let context = GenerationError.Context(debugDescription: "fixture")
+        let cases: [(GenerationError, String, String)] = [
+            (.exceededContextWindowSize(context), "掲載文が長すぎます", "物件情報の部分だけを貼り付けて"),
+            (.guardrailViolation(context), "安全性チェックにより読み取りが停止", "物件情報を手入力"),
+            (.unsupportedGuide(context), "読み取り形式に対応していません", "物件情報を手入力"),
+            (.unsupportedLanguageOrLocale(context), "端末の言語設定にモデルが対応していません", "Apple Intelligence の言語設定を確認"),
+            (.decodingFailure(context), "モデルの応答から物件データを読み取れません", "物件情報を手入力"),
+            (.rateLimited(context), "利用回数が一時的に制限", "しばらく待って"),
+            (.concurrentRequests(context), "別の読み取りを処理中", "その処理が終わってから"),
+            (.refusal(.init(transcriptEntries: []), context), "掲載文の読み取りを拒否", "物件情報を手入力")
+        ]
+        for (error, reason, nextStep) in cases {
+            let message = ListingExtractionFailure(error).reason
+            XCTAssertTrue(message.contains(reason), message)
+            XCTAssertTrue(message.contains(nextStep), message)
+        }
+    }
+
+    func testUnknownExtractionErrorUsesLocalizedDescription() {
+        let error = NSError(domain: "ExtractionTests", code: 1, userInfo: [NSLocalizedDescriptionKey: "予期しないエラー"])
+
+        XCTAssertEqual(ListingExtractionFailure(error).reason, error.localizedDescription)
+    }
+
+    func testModelAvailabilityShowsSpecificReasonsAndNextSteps() throws {
+        let cases: [(SystemLanguageModel.Availability, String, String)] = [
+            (.unavailable(.deviceNotEligible), "対応していません", "対応端末をお使いください"),
+            (.unavailable(.appleIntelligenceNotEnabled), "オフになっています", "「Apple IntelligenceとSiri」で有効"),
+            (.unavailable(.modelNotReady), "モデルは準備中です", "ダウンロード状況を確認")
+        ]
+        XCTAssertNil(OnDeviceExtractor.unavailableReason(for: .available))
+        for (availability, reason, nextStep) in cases {
+            let message = try XCTUnwrap(OnDeviceExtractor.unavailableReason(for: availability))
+            XCTAssertTrue(message.contains(reason), message)
+            XCTAssertTrue(message.contains(nextStep), message)
+        }
     }
 }

@@ -18,13 +18,24 @@ struct ListingExtractionFailure: LocalizedError {
             return
         }
         switch generationError {
-        case .exceededContextWindowSize: reason = "掲載文がモデルで処理できる長さを超えました。"
-        case .assetsUnavailable: reason = "Apple Intelligence のモデルを読み込めませんでした。"
-        case .guardrailViolation, .refusal: reason = "Apple Intelligence がこの掲載文を処理できませんでした。"
-        case .unsupportedGuide: reason = "このモデルは物件データの読み取り形式に対応していません。"
-        case .unsupportedLanguageOrLocale: reason = "掲載文の言語または端末の言語設定にモデルが対応していません。"
-        case .decodingFailure: reason = "モデルの応答から物件データを読み取れませんでした。"
-        case .rateLimited, .concurrentRequests: reason = "Apple Intelligence が使用中です。"
+        case .exceededContextWindowSize:
+            reason = "掲載文が長すぎます。物件情報の部分だけを貼り付けて、もう一度お試しください。"
+        case .assetsUnavailable:
+            reason = "Apple Intelligence のモデルを読み込めませんでした。「設定」＞「Apple IntelligenceとSiri」を開き、モデルが未ダウンロードの場合は完了を待ってからお試しください。"
+        case .guardrailViolation:
+            reason = "Apple Intelligence の安全性チェックにより読み取りが停止しました。物件情報を手入力してください。"
+        case .unsupportedGuide:
+            reason = "このモデルは物件データの読み取り形式に対応していません。物件情報を手入力してください。"
+        case .unsupportedLanguageOrLocale:
+            reason = "掲載文の言語または端末の言語設定にモデルが対応していません。日本語の掲載文を使い、Apple Intelligence の言語設定を確認してください。"
+        case .decodingFailure:
+            reason = "モデルの応答から物件データを読み取れませんでした。物件情報を手入力してください。"
+        case .rateLimited:
+            reason = "Apple Intelligence の利用回数が一時的に制限されています。しばらく待ってからお試しください。"
+        case .concurrentRequests:
+            reason = "Apple Intelligence は別の読み取りを処理中です。その処理が終わってからお試しください。"
+        case .refusal:
+            reason = "Apple Intelligence がこの掲載文の読み取りを拒否しました。物件情報を手入力してください。"
         @unknown default: reason = error.localizedDescription
         }
     }
@@ -58,11 +69,18 @@ private struct ExtractedListing {
 
 struct OnDeviceExtractor: ListingExtractor {
     var unavailableReason: String? {
-        switch SystemLanguageModel.default.availability {
+        Self.unavailableReason(for: SystemLanguageModel.default.availability)
+    }
+
+    static func unavailableReason(for availability: SystemLanguageModel.Availability) -> String? {
+        switch availability {
         case .available: nil
-        case .unavailable(.deviceNotEligible): "この端末は Apple Intelligence に対応していません。"
-        case .unavailable(.appleIntelligenceNotEnabled): "設定で Apple Intelligence を有効にしてください。"
-        case .unavailable(.modelNotReady): "Apple Intelligence のモデルは準備中です。"
+        case .unavailable(.deviceNotEligible):
+            "この端末は Apple Intelligence に対応していません。自動読み取りには対応端末をお使いください。"
+        case .unavailable(.appleIntelligenceNotEnabled):
+            "Apple Intelligence がオフになっています。「設定」＞「Apple IntelligenceとSiri」で有効にしてください。"
+        case .unavailable(.modelNotReady):
+            "Apple Intelligence のモデルは準備中です。「設定」＞「Apple IntelligenceとSiri」でダウンロード状況を確認し、準備が完了してからお試しください。"
         @unknown default: "Apple Intelligence を利用できません。"
         }
     }

@@ -1,0 +1,6 @@
+iOS/build/
+DerivedData/
+*.xcresult
+xcuserdata/
+.DS_Store
+*.p8

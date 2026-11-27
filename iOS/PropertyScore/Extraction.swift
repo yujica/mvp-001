@@ -1,3 +1,4 @@
+import CoreFoundation
 import Foundation
 import FoundationModels
 
@@ -150,16 +151,70 @@ enum ListingPage {
             guard data.count < 1_000_000 else { break }
             data.append(byte)
         }
-        let encoding: String.Encoding
-        switch response.textEncodingName?.lowercased() {
-        case "shift_jis", "shift-jis", "sjis", "windows-31j": encoding = .shiftJIS
-        case "euc-jp": encoding = .japaneseEUC
-        default: encoding = .utf8
-        }
-        let html = String(data: data, encoding: encoding) ?? String(decoding: data, as: UTF8.self)
-        let text = http.mimeType == "text/plain" ? html : visibleText(html)
+        let isHTML = http.mimeType != "text/plain"
+        let document = decode(data, httpCharset: http.textEncodingName, isHTML: isHTML)
+        let text = isHTML ? visibleText(document) : document
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw Failure.empty }
         return text
+    }
+
+    static func decode(_ data: Data, httpCharset: String?, isHTML: Bool) -> String {
+        if let charset = httpCharset, let encoding = encoding(named: charset),
+           let text = String(data: data, encoding: encoding) {
+            return text
+        }
+        if isHTML, let charset = metaCharset(in: data), let encoding = encoding(named: charset),
+           let text = String(data: data, encoding: encoding) {
+            return text
+        }
+        for encoding in [String.Encoding.utf8, .shiftJIS, .japaneseEUC] {
+            if let text = String(data: data, encoding: encoding) { return text }
+        }
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    private static func encoding(named charset: String) -> String.Encoding? {
+        let name = charset.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        switch name {
+        case "shift_jis", "shift-jis", "sjis", "x-sjis", "windows-31j", "cp932": return .shiftJIS
+        case "euc-jp", "euc_jp", "x-euc-jp": return .japaneseEUC
+        default:
+            let encoding = CFStringConvertIANACharSetNameToEncoding(name as CFString)
+            guard encoding != kCFStringEncodingInvalidId else { return nil }
+            return String.Encoding(rawValue: CFStringConvertEncodingToNSStringEncoding(encoding))
+        }
+    }
+
+    private static func metaCharset(in data: Data) -> String? {
+        let prefix = String(decoding: data.prefix(16_384), as: UTF8.self)
+            .replacingOccurrences(of: "(?is)<!--.*?(?:-->|$)|<script\\b[^>]*>.*?(?:</script\\s*>|$)",
+                                  with: "", options: .regularExpression)
+        let tags = regexMatches(#"(?i)<meta(?=[\s/>])(?:[^>"']|"[^"]*"|'[^']*')*>"#, in: prefix)
+        let attributePattern = #"\s+([^\s"'=<>/]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>]+))"#
+        for tag in tags {
+            let attributes = Dictionary(regexMatches(attributePattern, in: tag[0]).compactMap { match in
+                match.dropFirst(2).first { !$0.isEmpty }.map { (match[1].lowercased(), $0) }
+            }, uniquingKeysWith: { first, _ in first })
+            if let charset = attributes["charset"], encoding(named: charset) != nil { return charset }
+            if attributes["http-equiv"]?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "content-type",
+               let content = attributes["content"],
+               let charset = regexMatches(#"(?i)(?:^|;)\s*charset\s*=\s*['"]?([^\s;'"]+)"#, in: content).first?[1],
+               encoding(named: charset) != nil {
+                return charset
+            }
+        }
+        return nil
+    }
+
+    private static func regexMatches(_ pattern: String, in text: String) -> [[String]] {
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
+        let source = text as NSString
+        return regex.matches(in: text, range: NSRange(location: 0, length: source.length)).map { match in
+            (0..<match.numberOfRanges).map { index in
+                let range = match.range(at: index)
+                return range.location == NSNotFound ? "" : source.substring(with: range)
+            }
+        }
     }
 
     static func visibleText(_ html: String) -> String {

@@ -29,4 +29,34 @@ final class ExtractionTests: XCTestCase {
         let text = "青葉レジデンス\n販売価格：2400万円"
         XCTAssertEqual(OnDeviceExtractor.promptText(from: text), text)
     }
+
+    func testDecodeShiftJISFromMetaDeclarations() throws {
+        for meta in [
+            "<META CHARSET=Shift_JIS>",
+            "<meta content='text/html; charset=Shift_JIS' http-equiv=\"Content-Type\">"
+        ] {
+            let html = "<html><head><!-- <meta charset=ISO-8859-1> -->\(meta)</head><body>価格 2400万円</body></html>"
+            let bytes = try XCTUnwrap(html.data(using: .shiftJIS))
+
+            let decoded = ListingPage.decode(bytes, httpCharset: nil, isHTML: true)
+            XCTAssertEqual(ListingPage.visibleText(decoded), "価格 2400万円")
+        }
+    }
+
+    func testDecodePrefersHTTPHeaderOverMeta() throws {
+        let html = "<meta charset=ISO-8859-1><p>青葉レジデンス</p>"
+        let bytes = try XCTUnwrap(html.data(using: .utf8))
+
+        XCTAssertEqual(ListingPage.decode(bytes, httpCharset: "UTF-8", isHTML: true), html)
+    }
+
+    func testDecodeEUCJPFromMetaAndShiftJISWithoutDeclaration() throws {
+        let html = "<meta charset=EUC-JP><p>青葉レジデンス</p>"
+        let eucJP = try XCTUnwrap(html.data(using: .japaneseEUC))
+        XCTAssertEqual(ListingPage.decode(eucJP, httpCharset: nil, isHTML: true), html)
+
+        let text = "青葉レジデンス"
+        let shiftJIS = try XCTUnwrap(text.data(using: .shiftJIS))
+        XCTAssertEqual(ListingPage.decode(shiftJIS, httpCharset: nil, isHTML: false), text)
+    }
 }

@@ -12,6 +12,8 @@ struct PropertyScoreApp: App {
             extractor = FixtureExtractor()
         } else if arguments.contains("-ui-model-unavailable") {
             extractor = UnavailableFixtureExtractor()
+        } else if arguments.contains("-ui-model-failure") {
+            extractor = FailingFixtureExtractor()
         } else {
             extractor = OnDeviceExtractor()
         }

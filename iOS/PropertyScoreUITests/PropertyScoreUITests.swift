@@ -43,6 +43,27 @@ final class PropertyScoreUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["暫定スコア：未評価の項目は加点していません。"].exists)
     }
 
+    func testExtractionFailureShowsReasonAndKeepsPartialListingForManualScoring() {
+        let app = launch("-ui-model-failure")
+        app.buttons["掲載文"].tap()
+        let editor = app.textViews["listing-text"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        editor.tap()
+        editor.typeText("Aoba Residence 5 min walk")
+        app.buttons["完了"].tap()
+        app.buttons["extract-listing"].tap()
+
+        let warning = app.descendants(matching: .any)["extraction-warning"].firstMatch
+        XCTAssertTrue(warning.waitForExistence(timeout: 5))
+        XCTAssertTrue(warning.label.contains("Apple Intelligence のモデルを読み込めませんでした。"))
+        XCTAssertEqual(app.textFields["field-name"].value as? String, "青葉レジデンス")
+        XCTAssertEqual(app.textFields["field-walking"].value as? String, "5")
+        app.buttons["calculate-score"].tap()
+        let total = app.staticTexts["total-score"]
+        XCTAssertTrue(total.waitForExistence(timeout: 5))
+        XCTAssertEqual(total.label, "17")
+    }
+
     func testConditionsAreSavedAcrossLaunches() {
         let app = launch("-ui-fixture")
         app.buttons["open-conditions"].tap()

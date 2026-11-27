@@ -113,7 +113,7 @@ struct AnalysisView: View {
 
                         Button {
                             inputFocused = false
-                            path.append(Destination.fields(Listing()))
+                            path.append(Destination.fields(Listing(), warning: nil))
                         } label: {
                             Text("手入力で分析する").frame(maxWidth: .infinity)
                         }
@@ -151,8 +151,8 @@ struct AnalysisView: View {
             }
             .navigationDestination(for: Destination.self) { destination in
                 switch destination {
-                case .fields(let listing):
-                    ListingEditor(initial: listing) { path.append(Destination.result($0)) }
+                case .fields(let listing, let warning):
+                    ListingEditor(initial: listing, warning: warning) { path.append(Destination.result($0)) }
                 case .result(let listing):
                     ResultView(listing: listing, score: Scoring.evaluate(listing, conditions))
                 case .conditions:
@@ -190,14 +190,15 @@ struct AnalysisView: View {
 
         do {
             let listing = try await extractor.extract(source)
-            path.append(Destination.fields(listing))
+            path.append(Destination.fields(listing, warning: nil))
         } catch {
             unavailableReason = extractor.unavailableReason
-            self.error = "読み取りに失敗しました。掲載文を短くするか、手入力で分析してください。"
+            let failure = error as? ListingExtractionFailure ?? ListingExtractionFailure(error)
+            path.append(Destination.fields(failure.partialListing, warning: failure.localizedDescription))
         }
     }
 
     private enum Destination: Hashable {
-        case fields(Listing), result(Listing), conditions
+        case fields(Listing, warning: String?), result(Listing), conditions
     }
 }

@@ -2,14 +2,16 @@ import SwiftUI
 
 struct ListingEditor: View {
     let onAnalyze: (Listing) -> Void
+    let warning: String?
 
     @State private var name: String
     @State private var values: [Field: String]
     @State private var rights: Rights
     @FocusState private var focus: Field?
 
-    init(initial: Listing, onAnalyze: @escaping (Listing) -> Void) {
+    init(initial: Listing, warning: String?, onAnalyze: @escaping (Listing) -> Void) {
         self.onAnalyze = onAnalyze
+        self.warning = warning
         _name = State(initialValue: initial.name)
         _rights = State(initialValue: initial.leasehold.map { $0 ? .leasehold : .owned } ?? .unknown)
         _values = State(initialValue: Dictionary(uniqueKeysWithValues: Field.allCases.compactMap { field in
@@ -22,6 +24,18 @@ struct ListingEditor: View {
 
     var body: some View {
         Form {
+            if let warning {
+                Section {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Label(warning, systemImage: "exclamationmark.circle")
+                            .foregroundStyle(.orange)
+                            .accessibilityIdentifier("extraction-warning")
+                        Text("読み取れた項目を確認し、残りは手入力してください。")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
             Section {
                 TextField("物件名（任意）", text: $name)
                     .accessibilityIdentifier("field-name")

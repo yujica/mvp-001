@@ -1,3 +1,4 @@
+import FoundationModels
 import XCTest
 @testable import PropertyScore
 
@@ -58,5 +59,15 @@ final class ExtractionTests: XCTestCase {
         let text = "青葉レジデンス"
         let shiftJIS = try XCTUnwrap(text.data(using: .shiftJIS))
         XCTAssertEqual(ListingPage.decode(shiftJIS, httpCharset: nil, isHTML: false), text)
+    }
+
+    func testGenerationFailureLocalizesReasonAndRetainsPartialFields() {
+        let partial = Listing(name: "青葉レジデンス", walkingMinutes: 5, leasehold: false)
+        let error = LanguageModelSession.GenerationError.assetsUnavailable(.init(debugDescription: "fixture"))
+        let failure = ListingExtractionFailure(error, partialListing: partial)
+
+        XCTAssertEqual(failure.localizedDescription, "掲載情報を読み取れませんでした。理由：Apple Intelligence のモデルを読み込めませんでした。")
+        XCTAssertEqual(failure.partialListing, partial)
+        XCTAssertNil(failure.partialListing.price)
     }
 }

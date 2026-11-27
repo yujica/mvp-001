@@ -40,6 +40,18 @@ final class ExtractionTests: XCTestCase {
         for fact in facts { XCTAssertTrue(prompt.contains(fact)) }
     }
 
+    func testPromptUnionsOverlappingAndAdjacentKeywordExcerpts() {
+        let filler = String(repeating: "周辺のご案内。", count: 350)
+        let adjacent = "参考価格\n1,100万円\n注記\n物件価格\n1,000万円"
+        let overlapping = "参考価格\n2,500万円\n販売価格\n2,400万円"
+        let text = [filler, adjacent, filler, overlapping].joined(separator: "\n")
+        let prompt = OnDeviceExtractor.promptText(from: text)
+
+        XCTAssertLessThanOrEqual(prompt.utf16.count, 1700)
+        XCTAssertTrue(prompt.contains(adjacent))
+        XCTAssertTrue(prompt.contains(overlapping))
+    }
+
     func testPromptFillsRemainingBudgetInSourceOrderWithoutDuplicatingExcerpts() {
         let prefix = String(repeating: "あ", count: 300) + "早めの紹介情報\n"
         let middle = "販売価格：2,400万円\n次の紹介情報\n"

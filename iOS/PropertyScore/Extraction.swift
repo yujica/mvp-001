@@ -113,9 +113,11 @@ struct OnDeviceExtractor: ListingExtractor {
             "積算評価|積算|評価額",
             "土地権利|借地権|所有権|土地"
         ]
-        let matches = fields.map { pattern -> [(range: NSRange, pieces: [NSRange])] in
+        let matches = fields.map { pattern -> [NSRange] in
             guard let expression = try? NSRegularExpression(pattern: pattern) else { return [] }
-            var excerpts: [(range: NSRange, pieces: [NSRange])] = []
+            var excerpts: [NSRange] = []
+            var groupCount = 0
+            var groupEnd = 0
             expression.enumerateMatches(in: text, range: NSRange(location: 0, length: source.length)) { match, _, stop in
                 guard let match, NSMaxRange(match.range) > 240 else { return }
                 let line = source.lineRange(for: match.range)
@@ -127,39 +129,34 @@ struct OnDeviceExtractor: ListingExtractor {
                 }
                 let end = min(lineEnd, maximumEnd)
                 let excerpt = source.rangeOfComposedCharacterSequences(for: NSRange(location: start, length: end - start))
-                if let previous = excerpts.last?.range, NSMaxRange(previous) >= excerpt.location {
-                    excerpts[excerpts.count - 1].range = NSUnionRange(previous, excerpt)
-                    excerpts[excerpts.count - 1].pieces.append(excerpt)
-                } else if excerpts.count < 2 {
-                    excerpts.append((excerpt, [excerpt]))
-                } else {
-                    stop.pointee = true
+                if excerpts.isEmpty || excerpt.location > groupEnd {
+                    guard groupCount < 2 else {
+                        stop.pointee = true
+                        return
+                    }
+                    groupCount += 1
                 }
+                groupEnd = max(groupEnd, NSMaxRange(excerpt))
+                if excerpts.last != excerpt { excerpts.append(excerpt) }
             }
             return excerpts
         }
-        guard matches.contains(where: { !$0.isEmpty }) else {
+        let rounds = matches.map(\.count).max() ?? 0
+        guard rounds > 0 else {
             return source.substring(to: source.rangeOfComposedCharacterSequence(at: limit).location)
         }
 
         var ranges = [NSRange(location: 0, length: source.rangeOfComposedCharacterSequence(at: 240).location)]
-        for index in 0..<2 {
+        allocation: for index in 0..<rounds {
             for excerpts in matches where excerpts.indices.contains(index) {
                 let excerpt = excerpts[index]
-                let merged = mergeExcerpts(ranges + [excerpt.range])
+                let merged = mergeExcerpts(ranges + [excerpt])
                 if excerptLength(merged) <= limit {
                     ranges = merged
-                    continue
+                } else {
+                    ranges = addingExcerptPrefix(excerpt, to: ranges, source: source, limit: limit)
                 }
-                for piece in excerpt.pieces {
-                    let merged = mergeExcerpts(ranges + [piece])
-                    if excerptLength(merged) <= limit {
-                        ranges = merged
-                    } else {
-                        ranges = addingExcerptPrefix(piece, to: ranges, source: source, limit: limit)
-                        break
-                    }
-                }
+                if excerptLength(ranges) == limit { break allocation }
             }
         }
 

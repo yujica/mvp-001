@@ -76,6 +76,18 @@ final class ExtractionTests: XCTestCase {
         XCTAssertTrue(prompt.hasSuffix("\n" + String(repeating: piece, count: 29) + label + String(repeating: "🏠", count: 16)))
     }
 
+    func testPromptSharesBudgetAcrossKeywordFieldsBeforeRepeatingAnyField() {
+        let filler = String(repeating: "周辺のご案内。", count: 350)
+        let price = "販売価格\n2,400万円"
+        let prices = String(repeating: price + "\n", count: 150)
+        let facts = ["家賃\n月額8万円", "最寄駅\n青葉駅から徒歩7分", "賃料\n月額9万円"]
+        let text = ([filler, prices] + facts).joined(separator: "\n" + filler + "\n")
+        let prompt = OnDeviceExtractor.promptText(from: text)
+
+        XCTAssertLessThanOrEqual(prompt.utf16.count, 1700)
+        for fact in [price] + facts { XCTAssertTrue(prompt.contains(fact), fact) }
+    }
+
     func testDecodeShiftJISFromMetaDeclarations() throws {
         for meta in [
             "<META CHARSET=Shift_JIS>",
